@@ -25,6 +25,8 @@
 #include <string.h>
 #include <sys/wait.h>
 
+#include <iostream>
+
 #include "util.h"
 
 Subprocess::Subprocess() : fd_(-1), pid_(-1) {
@@ -35,6 +37,35 @@ Subprocess::~Subprocess() {
   // Reap child if forgotten.
   if (pid_ != -1)
     Finish();
+}
+
+void tokenize(const string& command, vector<string>& tokens) {
+	string current_token;
+	for (size_t i = 0; i < command.size(); i++) {
+		char c = command[i];
+		if (c == ' ') {
+			if (!current_token.empty()) {
+				tokens.push_back(current_token);
+				current_token.clear();
+			}
+		} else {
+			current_token.push_back(c);
+
+			if (c == '\"') {
+				for (; i < command.size(); i++) {
+					c = command[i];
+					current_token.push_back(c);
+					if (c == '\"') {
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	if (!current_token.empty()) {
+		tokens.push_back(current_token);
+	}
 }
 
 bool Subprocess::Start(SubprocessSet* set, const string& command) {
@@ -69,7 +100,19 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
       error_pipe = 2;
       close(output_pipe[1]);
 
-      execl("/bin/sh", "/bin/sh", "-c", command.c_str(), NULL);
+      vector<string> tokens;
+      tokenize(command, tokens);
+
+      const char * * tokens_cstr = new const char *[tokens.size() + 1];
+      for (size_t i = 0; i < tokens.size(); i++) {
+    	  tokens_cstr[i] = tokens[i].c_str();
+      }
+      tokens_cstr[tokens.size()] = 0;
+
+      // We cast away the const... this is a little evil, but we're not going to reuse tokens
+      execvp(tokens[0].c_str(), (char * const *) &(tokens_cstr[0]));
+
+      //execl("/bin/sh", "/bin/sh", "-c", command.c_str(), NULL);
     } while (false);
 
     // If we get here, something went wrong; the execl should have
